@@ -191,17 +191,21 @@ var Nasihat = {
           return;
         }
 
-        var data   = d.data;
-        var teksId = data.indo || data.doa || data.terjemah || '';
-        var judul  = data.judul || data.nama || 'Doa Harian';
+        var data    = d.data;
+        var teksId  = data.indo || data.doa || data.terjemah || '';
+        var teksAr  = data.arab || data.arabic || data.arab_text || '';
+        var judul   = data.judul || data.nama || 'Doa Harian';
 
-        if (!teksId) {
+        if (!teksId && !teksAr) {
           setFallback();
           return;
         }
 
-        DOM.el('nasihat-text').textContent = '\u201c' + teksId + '\u201d';
-        DOM.el('nasihat-src').textContent  = judul;
+        // Kalau kamu hanya pakai satu baris (tanpa Arab):
+        DOM.el('nasihat-text').textContent =
+          '\u201c' + (teksId || teksAr) + '\u201d';
+
+        DOM.el('nasihat-src').textContent = judul;
       },
       function() {
         setFallback();
@@ -209,11 +213,13 @@ var Nasihat = {
     );
 
     function setFallback() {
-      DOM.el('nasihat-text').textContent = '\u201cSesungguhnya bersama kesulitan ada kemudahan.\u201d';
+      DOM.el('nasihat-text').textContent =
+        '\u201cSesungguhnya bersama kesulitan ada kemudahan.\u201d';
       DOM.el('nasihat-src').textContent  = 'QS. Al-Insyirah: 6';
     }
   }
 };
+
 
 
 
