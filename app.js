@@ -179,9 +179,6 @@ var Shalat = {
 };
 
 
-// ============================================
-// NASIHAT HARIAN
-// ============================================
 var Nasihat = {
   load: function() {
     apiFetch('https://api.myquran.com/v2/doa/acak',
@@ -191,21 +188,26 @@ var Nasihat = {
           return;
         }
 
-        var data    = d.data;
-        var teksId  = data.indo || data.doa || data.terjemah || '';
-        var teksAr  = data.arab || data.arabic || data.arab_text || '';
-        var judul   = data.judul || data.nama || 'Doa Harian';
+        var data   = d.data;
+        // Dari contoh respons:
+        // data.doa     = teks Arab
+        // data.artinya = terjemahan Indonesia
+        var teksAr  = data.doa || '';
+        var teksId  = data.artinya || '';
+        var judul   = data.judul || 'Doa Harian';
 
-        if (!teksId && !teksAr) {
+        if (!teksAr && !teksId) {
           setFallback();
           return;
         }
 
-        // Kalau kamu hanya pakai satu baris (tanpa Arab):
-        DOM.el('nasihat-text').textContent =
-          '\u201c' + (teksId || teksAr) + '\u201d';
+        // Tampilkan: Arab (jika ada), lalu garis, lalu arti
+        var line = '';
+        if (teksAr) line += teksAr + ' — ';
+        if (teksId) line += teksId;
 
-        DOM.el('nasihat-src').textContent = judul;
+        DOM.el('nasihat-text').textContent = '\u201c' + line + '\u201d';
+        DOM.el('nasihat-src').textContent  = judul;
       },
       function() {
         setFallback();
@@ -219,6 +221,7 @@ var Nasihat = {
     }
   }
 };
+
 
 
 
