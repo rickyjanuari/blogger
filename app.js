@@ -393,15 +393,16 @@ var Quran = (function(){
 
   // ===== AUDIO PER AYAT =====
   function playAyat(surahNo, ayatNo) {
-    if (!_currentSurah || _currentSurah.nomor !== surahNo) return;
-    var a = _currentSurah.ayat.find(function(x){ return x.nomorAyat === ayatNo; });
-    if (!a || !a.audio) return;
-    var src = a.audio['05'] || a.audio['01'] || '';
-    if (!src) return;
-    try { _audio.pause(); } catch(e){}
-    _audio.src = src;
-    _audio.play();
-  }
+  if (!_currentSurah || _currentSurah.nomor !== surahNo) return;
+  var a = _currentSurah.ayat.find(function(x){ return x.nomorAyat === ayatNo; });
+  if (!a || !a.audio) return;
+  var src = a.audio['05'] || a.audio['01'] || '';
+  if (!src) return;
+  try { _audio.pause(); } catch(e){}
+  _audio.src = src;
+  _audio.play();
+}
+
 
   // ===== TAFSIR PER AYAT =====
   function toggleTafsir(surahNo, ayatNo) {
