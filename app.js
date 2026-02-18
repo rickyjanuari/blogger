@@ -186,18 +186,36 @@ var Nasihat = {
   load: function() {
     apiFetch('https://api.myquran.com/v2/doa/acak',
       function(d) {
-        if (d.status && d.data) {
-          DOM.el('nasihat-text').textContent = '\u201c' + d.data.indo + '\u201d';
-          DOM.el('nasihat-src').textContent  = d.data.judul || 'Doa Harian';
+        if (!d || !d.data) {
+          setFallback();
+          return;
         }
+
+        var data   = d.data;
+        var teksId = data.indo || data.doa || data.terjemah || '';
+        var judul  = data.judul || data.nama || 'Doa Harian';
+
+        if (!teksId) {
+          setFallback();
+          return;
+        }
+
+        DOM.el('nasihat-text').textContent = '\u201c' + teksId + '\u201d';
+        DOM.el('nasihat-src').textContent  = judul;
       },
       function() {
-        DOM.el('nasihat-text').textContent = '\u201cSesungguhnya bersama kesulitan ada kemudahan.\u201d';
-        DOM.el('nasihat-src').textContent  = 'QS. Al-Insyirah: 6';
+        setFallback();
       }
     );
+
+    function setFallback() {
+      DOM.el('nasihat-text').textContent = '\u201cSesungguhnya bersama kesulitan ada kemudahan.\u201d';
+      DOM.el('nasihat-src').textContent  = 'QS. Al-Insyirah: 6';
+    }
   }
 };
+
+
 
 
 // ============================================
