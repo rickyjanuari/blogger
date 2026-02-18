@@ -263,6 +263,10 @@ var Menu = {
 // ============================================
 var Quran = (function(){
   var _all = [];
+  var _currentSurah = null;   // simpan detail surah
+  var _currentTafsir = null;  // simpan tafsir surat
+  var _audio = new Audio();
+  var _bookmarks = JSON.parse(localStorage.getItem('ayahBookmarks') || '[]');
 
   function loadList() {
     DOM.loading('surah-list');
@@ -270,13 +274,13 @@ var Quran = (function(){
       function(d) {
         if (!d.data) return;
         _all = d.data;
-        render(_all);
+        renderList(_all);
       },
       function(){ DOM.error('surah-list', 'Quran.loadList'); }
     );
   }
 
-  function render(list) {
+  function renderList(list) {
     var container = DOM.el('surah-list');
     if (!container) return;
     var frag = DOM.frag(list, function(s) {
@@ -284,8 +288,10 @@ var Quran = (function(){
       div.className = 'surah-item';
       div.innerHTML =
         '<div class="surah-num">' + s.nomor + '</div>'
-        + '<div class="surah-info"><div class="surah-nama">' + s.namaLatin + '</div>'
-        + '<div class="surah-meta">' + s.arti + ' &#183; ' + s.jumlahAyat + ' Ayat &#183; ' + s.tempatTurun + '</div></div>'
+        + '<div class="surah-info">'
+        +   '<div class="surah-nama">' + s.namaLatin + '</div>'
+        +   '<div class="surah-meta">' + s.arti + ' &#183; ' + s.jumlahAyat + ' Ayat &#183; ' + s.tempatTurun + '</div>'
+        + '</div>'
         + '<div class="surah-arab">' + s.nama + '</div>';
       div.onclick = function(){ loadSurah(s.nomor); };
       return div;
@@ -296,7 +302,7 @@ var Quran = (function(){
 
   function cari(q) {
     var kw = q.toLowerCase();
-    render(!kw ? _all : _all.filter(function(s){
+    renderList(!kw ? _all : _all.filter(function(s){
       return s.namaLatin.toLowerCase().indexOf(kw) !== -1 || s.arti.toLowerCase().indexOf(kw) !== -1;
     }));
   }
@@ -305,50 +311,176 @@ var Quran = (function(){
     Router.go('surah');
     DOM.el('surah-title').textContent = 'Memuat...';
     DOM.loading('surah-detail');
+    _currentSurah  = null;
+    _currentTafsir = null;
 
+    // Ambil surah (ayat + audio per ayat)
     apiFetch('https://equran.id/api/v2/surat/' + nomor,
       function(d) {
         if (!d.data) return;
-        var s   = d.data;
-        DOM.el('surah-title').textContent = s.namaLatin;
-
-        var container = DOM.el('surah-detail');
-        container.innerHTML =
-          '<div class="surah-header">'
-          + '<h2>' + s.namaLatin + ' (' + s.nama + ')</h2>'
-          + '<p>' + s.arti + ' &#183; ' + s.jumlahAyat + ' Ayat &#183; ' + s.tempatTurun + '</p>'
-          + '<audio controls src="' + s.audioFull['05'] + '" preload="none"></audio>'
-          + '</div><div id="ayat-wrap"></div>';
-
-        // Render ayat dalam batch agar tidak freeze
-        var wrap = DOM.el('ayat-wrap');
-        var i = 0;
-        function batch() {
-          var frag = document.createDocumentFragment();
-          var end  = Math.min(i + 15, s.ayat.length);
-          while (i < end) {
-            var a   = s.ayat[i];
-            var div = document.createElement('div');
-            div.className = 'ayat-card';
-            div.innerHTML =
-              '<div class="ayat-num">' + a.nomorAyat + '</div>'
-              + '<div class="ayat-arab">' + a.teksArab + '</div>'
-              + '<div class="ayat-latin">' + a.teksLatin + '</div>'
-              + '<div class="ayat-terjemah">' + a.teksIndonesia + '</div>';
-            frag.appendChild(div);
-            i++;
-          }
-          wrap.appendChild(frag);
-          if (i < s.ayat.length) ric(batch);
-        }
-        ric(batch);
+        _currentSurah = d.data;
+        renderSurah();
+        // Setelah surah tampil, load tafsir di background
+        ric(function(){ loadTafsir(nomor); });
       },
-      function(){ DOM.error('surah-detail', 'Quran.loadList'); }
+      function(){ DOM.error('surah-detail', 'Quran.loadSurah'); }
     );
   }
 
-  return { loadList: loadList, cari: cari };
+  function loadTafsir(nomor) {
+    apiFetch('https://equran.id/api/v2/tafsir/' + nomor,
+      function(d) {
+        if (!d.data) return;
+        _currentTafsir = d.data;
+      },
+      function(){ /* tafsir optional, tidak perlu error UI */ }
+    );
+  }
+
+  function renderSurah() {
+    var s = _currentSurah;
+    if (!s) return;
+    DOM.el('surah-title').textContent = s.namaLatin;
+
+    var container = DOM.el('surah-detail');
+    container.innerHTML =
+      '<div class="surah-header">'
+      + '<h2>' + s.namaLatin + ' (' + s.nama + ')</h2>'
+      + '<p>' + s.arti + ' &#183; ' + s.jumlahAyat + ' Ayat &#183; ' + s.tempatTurun + '</p>'
+      + '<audio controls src="' + s.audioFull['05'] + '" preload="none"></audio>'
+      + '</div><div id="ayat-wrap"></div>';
+
+    var wrap = DOM.el('ayat-wrap');
+    var i = 0;
+    function batch() {
+      var frag = document.createDocumentFragment();
+      var end  = Math.min(i + 15, s.ayat.length);
+      while (i < end) {
+        var a   = s.ayat[i];
+        var key = s.nomor + ':' + a.nomorAyat; // contoh: 2:255
+        var div = document.createElement('div');
+        div.className = 'ayat-card' + (isBookmarked(key) ? ' bookmarked' : '');
+        div.setAttribute('data-key', key);
+        div.innerHTML =
+          '<div class="ayat-num">' + a.nomorAyat + '</div>'
+          + '<div class="ayat-arab">' + a.teksArab + '</div>'
+          + '<div class="ayat-latin">' + a.teksLatin + '</div>'
+          + '<div class="ayat-terjemah">' + a.teksIndonesia + '</div>'
+          + '<div class="ayat-actions">'
+          +   '<button onclick="Quran.playAyat('+s.nomor+','+a.nomorAyat+')">▶</button>'
+          +   '<button onclick="Quran.toggleTafsir('+s.nomor+','+a.nomorAyat+')">Tafsir</button>'
+          +   '<button onclick="Quran.copyAyat('+s.nomor+','+a.nomorAyat+')">Copy</button>'
+          +   '<button onclick="Quran.shareAyat('+s.nomor+','+a.nomorAyat+')">Share</button>'
+          +   '<button onclick="Quran.toggleBookmark('+s.nomor+','+a.nomorAyat+')">★</button>'
+          + '</div>'
+          + '<div class="ayat-tafsir" id="taf-'+s.nomor+'-'+a.nomorAyat+'" style="display:none"></div>';
+        frag.appendChild(div);
+        i++;
+      }
+      wrap.appendChild(frag);
+      if (i < s.ayat.length) ric(batch);
+    }
+    ric(batch);
+  }
+
+  // ========== AUDIO PER AYAT ==========
+  function playAyat(surahNo, ayatNo) {
+    if (!_currentSurah || _currentSurah.nomor !== surahNo) return;
+    var a = _currentSurah.ayat.find(function(x){ return x.nomorAyat === ayatNo; });
+    if (!a || !a.audio) return;
+    var src = a.audio['05'] || a.audio['01'] || '';  // pilih qari default [web:67][web:71]
+    if (!src) return;
+    try { _audio.pause(); } catch(e){}
+    _audio.src = src;
+    _audio.play();
+  }
+
+  // ========== TAFSIR PER AYAT ==========
+  function toggleTafsir(surahNo, ayatNo) {
+    var box = DOM.el('taf-'+surahNo+'-'+ayatNo);
+    if (!box) return;
+    if (!_currentTafsir || !_currentTafsir.ayat) {
+      // Kalau tafsir belum selesai di-load, coba load sekarang
+      loadTafsir(surahNo);
+      return;
+    }
+    var t = _currentTafsir.ayat.find(function(x){ return x.nomorAyat === ayatNo; });
+    if (!t) return;
+    if (box.style.display === 'none') {
+      box.style.display = 'block';
+      box.innerHTML = t.teks || t.tafsir || '';
+    } else {
+      box.style.display = 'none';
+    }
+  }
+
+  // ========== COPY ==========
+  function copyAyat(surahNo, ayatNo) {
+    if (!_currentSurah || _currentSurah.nomor !== surahNo) return;
+    var a = _currentSurah.ayat.find(function(x){ return x.nomorAyat === ayatNo; });
+    if (!a) return;
+    var text = a.teksArab + '\n\n' + a.teksLatin + '\n\n' + a.teksIndonesia
+      + '\n\n(Surah '+_currentSurah.namaLatin+' ['+surahNo+':'+ayatNo+'])';
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text);
+    } else {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+    }
+  }
+
+  // ========== SHARE ==========
+  function shareAyat(surahNo, ayatNo) {
+    if (!_currentSurah || _currentSurah.nomor !== surahNo) return;
+    var a = _currentSurah.ayat.find(function(x){ return x.nomorAyat === ayatNo; });
+    if (!a) return;
+    var text = a.teksArab + '\n\n' + a.teksIndonesia
+      + '\n(Surah '+_currentSurah.namaLatin+' ['+surahNo+':'+ayatNo+'])';
+    var url  = location.origin + '/#quran:' + surahNo + ':' + ayatNo;
+    if (navigator.share) {
+      navigator.share({ text: text, url: url });
+    } else {
+      // fallback: copy text + url
+      copyAyat(surahNo, ayatNo);
+      alert('Teks ayat sudah disalin. Bagikan manual di aplikasi lain.');
+    }
+  }
+
+  // ========== BOOKMARK ==========
+  function isBookmarked(key) {
+    return _bookmarks.indexOf(key) !== -1;
+  }
+
+  function toggleBookmark(surahNo, ayatNo) {
+    var key = surahNo + ':' + ayatNo;
+    var idx = _bookmarks.indexOf(key);
+    if (idx === -1) _bookmarks.push(key);
+    else _bookmarks.splice(idx, 1);
+    localStorage.setItem('ayahBookmarks', JSON.stringify(_bookmarks));
+
+    var card = document.querySelector('.ayat-card[data-key="'+key+'"]');
+    if (card) {
+      if (idx === -1) card.classList.add('bookmarked');
+      else card.classList.remove('bookmarked');
+    }
+  }
+
+  return {
+    loadList: loadList,
+    cari:     cari,
+    loadSurah: loadSurah,
+    playAyat: playAyat,
+    toggleTafsir: toggleTafsir,
+    copyAyat: copyAyat,
+    shareAyat: shareAyat,
+    toggleBookmark: toggleBookmark
+  };
 })();
+
 
 
 // ============================================
